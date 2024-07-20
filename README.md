@@ -1,4 +1,4 @@
-                   Automated Detection of Psoriasis Stages
+                   Automated Detection of Psoriasis Stages Through Image Processing and Machine Learning
 This project aims to automate the detection of stages in psoriasis using image processing and machine learning techniques. 
 The system takes skin images as input, processes them to remove noise and distortions, and then uses an Artificial Neural Network (ANN) to classify the stages of psoriasis. 
 Based on the classification, the system recommends treatments such as topical therapy, phototherapy, or biologics.
