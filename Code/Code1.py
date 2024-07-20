@@ -1,30 +1,30 @@
+import os
 import cv2
 import numpy as np
 import tensorflow as tf
+from flask import Flask, request, render_template, redirect, url_for
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Flatten
-from sklearn.model_selection import train_test_split
+from werkzeug.utils import secure_filename
 
-# Image Preprocessing
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = 'uploads'
+
+# Ensure the upload folder exists
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
+
+# Check if TensorFlow is using the GPU
+print("Num GPUs Available: ", len(tf.config.experimental.list_physical_devices('GPU')))
+
+# Preprocess image
 def preprocess_image(image_path):
     image = cv2.imread(image_path)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     edges = cv2.Canny(gray, 100, 200)
     contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cv2.drawContours(image, contours, -1, (0, 255, 0), 3)
-    return image, gray, edges
-
-# Load and preprocess images
-def load_data(image_paths, labels):
-    images = []
-    for image_path in image_paths:
-        _, gray, _ = preprocess_image(image_path)
-        images.append(gray)
-    images = np.array(images)
-    images = images.reshape((images.shape[0], images.shape[1], images.shape[2], 1))
-    images = images / 255.0  # Normalize images
-    labels = np.array(labels)
-    return images, labels
+    return gray
 
 # Define the Neural Network
 def create_ann(input_shape):
@@ -37,32 +37,35 @@ def create_ann(input_shape):
     model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
     return model
 
-# Training the ANN
-def train_ann(images, labels):
-    X_train, X_test, y_train, y_test = train_test_split(images, labels, test_size=0.3, random_state=42)
-    model = create_ann(X_train[0].shape)
-    model.fit(X_train, y_train, epochs=10, validation_data=(X_test, y_test))
-    return model
+# Load trained model (assuming the model is already trained and saved)
+model = create_ann((128, 128, 1))
+model.load_weights('model_weights.h5')  # Adjust the path as necessary
 
-# Predicting Psoriasis Stage
+# Predict stage of psoriasis
 def predict_stage(model, image_path):
-    _, gray, _ = preprocess_image(image_path)
-    gray = gray.reshape((1, gray.shape[0], gray.shape[1], 1))
+    gray = preprocess_image(image_path)
+    gray = cv2.resize(gray, (128, 128))
+    gray = gray.reshape((1, 128, 128, 1))
     gray = gray / 255.0  # Normalize image
     prediction = model.predict(gray)
     stage = np.argmax(prediction)
     return stage
 
-# Main script
-if __name__ == "__main__":
-    # Example image paths and labels
-    image_paths = ["path_to_image1.jpg", "path_to_image2.jpg", "path_to_image3.jpg"]
-    labels = [0, 1, 2]  # Replace with actual labels
+@app.route('/', methods=['GET', 'POST'])
+def upload_image():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return redirect(request.url)
+        file = request.files['file']
+        if file.filename == '':
+            return redirect(request.url)
+        if file:
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            stage = predict_stage(model, filepath)
+            return render_template('result.html', stage=stage)
+    return render_template('index.html')
 
-    images, labels = load_data(image_paths, labels)
-    model = train_ann(images, labels)
-    
-    # Test prediction
-    test_image_path = "path_to_test_image.jpg"
-    stage = predict_stage(model, test_image_path)
-    print(f"The predicted stage of psoriasis is: {stage}")
+if __name__ == "__main__":
+    app.run(debug=True)
